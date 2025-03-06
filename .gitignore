@@ -2,15 +2,12 @@
 GPT-API_key.pem
 *.pem
 
-faiss_index*
-*.faiss
-*.pkl
+
 
 Test/
 logs/
 *.log*
 
-db/
 conversation.json
 chat_history.json
 summary.txt
