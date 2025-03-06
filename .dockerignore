@@ -1,0 +1,7 @@
+.venv/
+
+Dockerfile
+docker-compose.yml
+
+log/
+Test/

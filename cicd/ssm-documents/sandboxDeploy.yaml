@@ -1,0 +1,68 @@
+---
+schemaVersion: "2.2"
+description: "EC2 Test Deploy latest"
+parameters:
+  deployPath:
+    type: "String"
+    description: "EC2 Path for repository deployment"
+    default: "/home/ubuntu/gpt-api"
+  deployBranch:
+    type: "String"
+    description: "Branch to deploy"
+    default: "master"
+  runAsUser:
+    type: "String"
+    description: "User to run the deployment commands"
+    default: "ubuntu"
+  bitBucketUser:
+    type: "String"
+    description: "User to access bitbucket token link"
+    default: "gim1ga"
+  bitBucketParameterStoreTokenLink:
+    type: "String"
+    description: "Token in parameter store to access bitbucket (used by bitBucketUser)"
+    default: "/gpt-api/social-coding-gim1ga-token"
+  sandboxDomain:
+    type: "String"
+    description: "URL for the sandbox"
+    default: "sandbox.service-gpt-api.bosch-warehouse.com"
+  defaultSwaggerDomain:
+    type: "String"
+    description: "URL for the default swagger"
+    default: "service-gpt-api.bosch-warehouse.com"
+mainSteps:
+  - action: "aws:runShellScript"
+    name: Deploy
+    inputs:
+      timeoutSeconds: '60'
+      runCommand:
+      - echo "------- Sandbox deploy to {{deployBranch}} -------"
+      - echo "------- Login as user {{runAsUser}}... -------"
+      - export HOME=/home/{{runAsUser}}
+      - su - {{runAsUser}} -c "git config --global --add safe.directory {{deployPath}}"
+      - set -e
+      - echo "------- Composing down previous deploy... --------"
+      - cd {{deployPath}}
+      - docker compose down
+      - echo "------- Pull latest changes for {{deployBranch}}... -------"
+      - git reset --hard
+      - git clean -fd
+      - git checkout master
+      - git reset --hard
+      - git clean -fd
+      - TOKEN=$(aws ssm get-parameter --name "{{bitBucketParameterStoreTokenLink}}" --with-decryption --query "Parameter.Value" --output text --no-verify-ssl)
+      - git pull https://{{bitBucketUser}}:${TOKEN}@sourcecode.socialcoding.bosch.com/scm/ducmx/gpt-api.git 
+      - git fetch origin
+      - git checkout {{deployBranch}}
+      - git pull || true
+      - git reset --hard origin/{{deployBranch}}
+      - echo "------- Prepare sandbox source code -------"
+      - echo "------- Replace default swagger url --------"
+      - sed 's/{{defaultSwaggerDomain}}/{{sandboxDomain}}/g' ./static/openapi.yaml -i
+      - echo "------- Compose up branch deploy... -------"
+      - docker compose up -d --build
+      - echo "------ Cleaning unused images... -------"
+      - docker image prune -a -f
+      - echo "------ Resetting permissions for .docker directory... -------"
+      - sudo chown -R {{runAsUser}}:{{runAsUser}} /home/{{runAsUser}}/.docker
+      - sudo chown -R {{runAsUser}}:{{runAsUser}} .git

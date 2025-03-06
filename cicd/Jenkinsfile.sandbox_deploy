@@ -1,0 +1,393 @@
+pipeline {
+    agent {
+        label "Windows_GA2VM00012"
+    }
+
+    environment {
+        EC2_ID = "i-0c17752fefd489585"
+        PROXY_CRED = credentials('bosch_user_proxy')
+        SSH_BITBUCKET_CRED = "gim1ga_bitbucket_appadmin1"
+        SSM_SANDBOX_DEPLOY_NAME_DOCUMENT = "gpt-api-ec2-sandbox-deploy"
+        HTTP_PROXY = "http://localhost:3128"
+        HTTPS_PROXY = "http://localhost:3128"
+        AWS_REGION = "us-east-2"
+        ACCESS_KEY_ID = credentials('gim1ga_aws_access_key_id')
+        SECRET_ACCESS_KEY = credentials('gim1ga_aws_secret_access_key')
+        STOP_INSTANCE_TIMEOUT = 120
+        SANDBOX_URL = "https://sandbox.service-gpt-api.bosch-warehouse.com"
+    }
+    options {
+        skipDefaultCheckout true
+        lock('sandbox-deploy')
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: [[name: "*/${env.BRANCH_NAME}"]],
+                    doGenerateSubmoduleConfigurations: false,
+                    extensions: [[$class: 'CloneOption', noTags: false, shallow: true, depth: 1]],
+                    submoduleCfg: [],
+                    userRemoteConfigs: [[
+                        url: 'ssh://git@sourcecode.socialcoding.bosch.com:7999/ducmx/gpt-api.git',
+                        credentialsId: env.SSH_BITBUCKET_CRED
+                    ]]
+                ])
+            }
+        }
+        stage('Initial Set Up'){
+            steps{
+                powershell(
+                    label: "Set AWS credentials",
+                    script: '''
+                        aws configure set aws_access_key_id $Env:ACCESS_KEY_ID; aws configure set aws_secret_access_key $Env:SECRET_ACCESS_KEY; aws configure set default.region $Env:AWS_REGION
+                        if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 254) {
+                            Write-Error ">> Failed run aws command"
+                            exit 1
+                        }
+                    '''
+                )
+            }
+        }
+        stage ('Start environment'){
+            steps{
+                // Give some time for assuring that instance state is stable
+                sleep(time: 20, unit: 'SECONDS')
+                powershell(
+                    label: "Start Instance",
+                    script: '''
+                        aws ec2 start-instances --no-verify-ssl --no-cli-pager --instance-ids $Env:EC2_ID
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Error ">> Failed to start EC2 instance"
+                            exit 1
+                        }
+                    '''
+                )
+                // Give some time for instance to start
+                sleep(time: 20, unit: 'SECONDS')
+            }
+        }
+        stage('Update SSM documents') {
+            steps {
+                //Update deploy documnet
+                updateSSMDocument("cicd/ssm-documents/sandboxDeploy.yaml", env.SSM_SANDBOX_DEPLOY_NAME_DOCUMENT)
+            }
+        }
+        stage('Deploy'){
+            steps {
+                script {
+                    def commandID = sendSSMDocument(env.SSM_SANDBOX_DEPLOY_NAME_DOCUMENT)
+                    env.DEPLOY_COMMAND_ID = commandID
+                    try {
+                        showResultsSSMCommand(env.DEPLOY_COMMAND_ID)
+                        echo "Deployed succesffully!"
+                        env.SUCCESS_DEPLOY = "true"
+                    }catch(Exception e){
+                        echo "Error: ${e}"
+                        env.SUCCESS_DEPLOY = "false"
+                        unstable("Deploy was not succesfull")
+                    }
+                
+                }
+            }
+        }
+        stage("Wait for manual testing"){
+            steps{
+                script {
+                    echo "URL: ${env.SANDBOX_URL}"
+                    try {
+                        timeout(time: env.STOP_INSTANCE_TIMEOUT, unit: 'MINUTES') {
+                            input(
+                                id: 'UserInput', message: 'Manual testing complete? (Sandbox environment will be stopped)', ok: 'Done'
+                            )
+                        }
+                    } catch (err) {
+                        echo "Timeout reached or input was aborted: ${err}"
+                    }
+                }
+            }
+        }
+        stage("Stop enviornment"){
+            steps{
+                stopEnvironment()
+            }
+        }
+    }
+
+    post {
+        always {
+            deleteDir()
+        }
+        failure {
+            script {
+                deleteDir()
+                echo "Deploy failed"
+                stopEnvironment()
+            }
+        }
+    }
+}
+
+def updateSSMDocument(documentFilePath, documentName){
+    /**
+    * Updates an AWS Systems Manager (SSM) document. Creates one if not already exists.
+    * 
+    * @param documentFilePath The local file path of the SSM document.
+    * @param documentName The name of the SSM document.
+    * @throws Exception if there is an error updating or creating the SSM document.
+    */
+
+    withEnv([
+        "SSM_DOCUMENT_NAME=${documentName}",
+        "SSM_LOCAL_PATH=${documentFilePath}"
+    ]){
+        powershell(
+            label: "Update SSM Document ${env.SSM_DOCUMENT_NAME}",
+            script: '''
+                # Set stop if fail
+                $ErrorActionPreference = "Stop"
+
+                # Set variables
+                $documentName = "${Env:SSM_DOCUMENT_NAME}"
+                $documentLocalPath = "${Env:SSM_LOCAL_PATH}"
+
+                # Check if the document already exists
+                Write-Output ">> Looking for document ${documentName}..."
+
+                $existingDocument = aws ssm get-document `
+                                        --name $documentName `
+                                        --no-verify-ssl `
+                                        --no-cli-pager
+
+                if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 254) {
+                    Write-Error ">> Failed run aws command"
+                    exit 1
+                }
+
+                if ($existingDocument) {
+                    # Update the existing document
+                    Write-Output ">> Document found, updating..."
+                        $process = Start-Process aws -ArgumentList @(
+                        "ssm", "update-document",
+                        "--name", $documentName,
+                        "--content", "file://${documentLocalPath}",
+                        "--document-version", '$LATEST',
+                        "--document-format", "YAML",
+                        "--no-verify-ssl",
+                        "--no-cli-pager"
+                    ) -NoNewWindow -PassThru -RedirectStandardOutput output.txt -RedirectStandardError error.txt -Wait
+
+                    $exitCode = $exitCode = $process.ExitCode
+
+                    if ($exitCode -eq 254) {
+                        $errorResponse = Get-Content error.txt -Raw
+                        if ($errorResponse -like "*DuplicateDocumentContent*") {
+                            Write-Output ">> Document $documentName is already up to date."
+                            exit 0
+                        } else {
+                            Write-Error $errorResponse
+                            Write-Error ">> Failed to update document $documentName."
+                            exit 1
+                        }
+                    }
+                    elseif ($exitCode -ne 0) {
+                        Write-Error ">> Failed to update document $documentName."
+                        exit 1
+                    }else {
+                        Write-Output ">> Document $documentName updated successfully."
+
+                        # Get latest document version
+                        $result = aws ssm describe-document `
+                                    --name $documentName `
+                                    --no-verify-ssl 
+
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Error ">> Failed to get document $documentName."
+                            exit 1
+                        }
+                        $latestVersion = $result | ConvertFrom-Json | Select-Object -ExpandProperty Document | Select-Object -ExpandProperty LatestVersion
+
+                        # Update default document version
+                        Write-Output ">> Updating document default version..."
+                        $response = aws ssm update-document-default-version `
+                            --name $documentName `
+                            --document-version "$latestVersion" `
+                            --no-verify-ssl `
+                            --no-cli-pager
+
+                        Write-Output $LASTEXITCODE
+                        if ($LASTEXITCODE -ne 0){
+                            Write-Error ">> Failed to update default version of document $documentName."
+                            exit 1
+                        }
+                        Write-Output ">> Default version of document $documentName updated successfully."
+                        exit 0
+                    }
+                } else {
+                    Write-Output ">> Document not found, creating..."
+                    # Create a new document
+                    aws ssm create-document `
+                        --name $documentName `
+                        --content "file://${documentLocalPath}" `
+                        --document-type "Command" `
+                        --document-format "YAML" `
+                        --no-verify-ssl `
+                        --no-cli-pager
+
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Error ">> Failed to create document $documentName."
+                        exit 1
+                    }
+                    Write-Output ">> Document $documentName created successfully."
+                    exit 0
+                }
+            '''
+        )
+    }
+}
+
+def sendSSMDocument(documentName){
+    /**
+    * Sends an SSM document to an EC2 instance using AWS SSM send-command.
+    * 
+    * @param documentName The name of the SSM document to send.
+    * @return The command ID of the sent document.
+    */
+
+    withEnv([
+        "SSM_DOCUMENT_NAME=${documentName}"
+    ]){
+        powershell(
+            label: "Send ${env.SSM_DOCUMENT_NAME} ssm document to ${env.SSM_DOCUMENT_NAME}",
+            script: '''
+                # Set stop if fail
+                $ErrorActionPreference = "Stop"
+
+                # Set variables
+                $instanceID = "${Env:EC2_ID}"
+                $documentName = "${Env:SSM_DOCUMENT_NAME}"
+
+                # Run the document
+                Write-Output ">> Running document $documentName on instance ${instanceID}..."
+                $result = aws ssm send-command `
+                    --document-name $documentName `
+                    --instance-ids $instanceID `
+                    --output json `
+                    --no-verify-ssl `
+                    --no-cli-pager `
+                    --parameters deployBranch=$Env:BRANCH_NAME
+
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error ">> Failed to run document $documentName on instance $instanceID."
+                    exit 1
+                }
+
+                $resultJson = $result | ConvertFrom-Json
+                $commandID = $resultJson.Command.CommandId
+                Write-Output ">> Command $commandID started successfully."
+
+                #Wait for command to finish
+                Write-Output ">> Waiting for command $commandID to finish..."
+                do {
+                    $result = aws ssm list-command-invocations `
+                        --command-id $commandID `
+                        --instance-id $instanceID `
+                        --details `
+                        --output json `
+                        --no-verify-ssl `
+                        --no-cli-pager
+
+                    if ($LASTEXITCODE -ne 0) {
+                        Write-Error ">> Failed to list command invocations for command $commandID."
+                        exit 1
+                    }
+
+                    $resultJson = $result | ConvertFrom-Json
+                    $status = $resultJson.CommandInvocations.Status
+                    $status = $status -join ','
+                    Write-Output ">> Command status: $status"
+
+                    Start-Sleep -s 5
+                } while ($status -eq "Pending" -or $status -eq "InProgress")
+
+                Write-Output ">> Command $commandID finished with status of ${status}."
+                $commandID | Out-File "commandId.txt"
+            '''
+        )
+    }
+    //Output commandID
+    script{
+        def commandId = powershell(script: 'Get-Content "commandId.txt"', returnStdout: true).trim()
+        return commandId
+    }
+}
+
+def showResultsSSMCommand(commandID){
+    withEnv([
+        "COMMAND_ID=${commandID}"
+    ]){
+        powershell(
+            label: "AWS Command dashboard",
+            script: '''
+                # Get content of the file
+                $commandID = ${Env:COMMAND_ID}
+                Write-Output "Command ID: $commandID"
+                Write-Output "For more details access AWS Command execution: https://us-east-2.console.aws.amazon.com/systems-manager/run-command/$commandID/${Env:EC2_ID}?region=us-east-2"
+            '''
+        )
+
+        powershell(
+            label: "Results of last deploy",
+            script: '''
+                # Set variables
+                $instanceID = "${Env:EC2_ID}"
+                
+                # Read last command id
+                $commandID = "${Env:COMMAND_ID}"
+
+                # Get the result of the command
+                $result = aws ssm list-command-invocations `
+                    --command-id $commandID `
+                    --instance-id $instanceID `
+                    --details `
+                    --output json `
+                    --no-verify-ssl `
+                    --no-cli-pager
+
+                if ($LASTEXITCODE -ne 0) {
+                    Write-Error ">> Failed to list command invocations for command $commandID."
+                    exit 1
+                }
+                
+                $resultJson = $result | ConvertFrom-Json
+                $status = $resultJson.CommandInvocations.Status
+                $status = $status -join ','
+                $output = $resultJson.CommandInvocations.CommandPlugins
+                
+                Write-Output ">> Command $commandID finished with status of ${status}."
+                Write-Output "Standard Output: "
+                Write-Output $output
+                if ($status -ne "Success") {
+                    Write-Error ">> Command $commandID failed."
+                    exit 1
+                }
+            '''
+        )
+    }
+}
+
+def stopEnvironment(){
+    echo "Stopping environment"
+    powershell(
+        label: "Stop Instance",
+        script: '''
+            aws ec2 stop-instances --no-verify-ssl --no-cli-pager --instance-ids $Env:EC2_ID
+            if ($LASTEXITCODE -ne 0) {
+                Write-Error ">> Failed to stop EC2 instance"
+                exit 1
+            }
+        '''
+    )
+}

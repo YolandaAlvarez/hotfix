@@ -1,0 +1,32 @@
+---
+schemaVersion: "2.2"
+description: "EC2 Test Deploy latest"
+parameters:
+  deployPath:
+    type: "String"
+    description: "EC2 Path for repository deployment"
+    default: "/home/ubuntu/gpt-api"
+  runAsUser:
+    type: "String"
+    description: "User to run the deployment commands"
+    default: "ubuntu"
+mainSteps:
+  - action: "aws:runShellScript"
+    name: Deploy
+    inputs:
+      timeoutSeconds: '60'
+      runCommand:
+      - echo "------- Login as user {{runAsUser}}... -------"
+      - export HOME=/home/{{runAsUser}}
+      - su - {{runAsUser}}
+      - git config --global --add safe.directory {{deployPath}}
+      - set -e
+      - echo "------- Checkout to green branch... -------"
+      - cd {{deployPath}}
+      - git checkout green
+      - echo "------- Recreate blue branch... -------"
+      - if git show-ref --quiet refs/heads/blue; then git branch -D blue; fi
+      - git checkout -b blue
+      - echo "------ Resetting permissions for .docker directory... -------"
+      - sudo chown -R {{runAsUser}}:{{runAsUser}} /home/{{runAsUser}}/.docker
+      - sudo chown -R {{runAsUser}}:{{runAsUser}} .git

@@ -1,0 +1,57 @@
+---
+schemaVersion: "2.2"
+description: "EC2 Test Deploy latest"
+parameters:
+  deployPath:
+    type: "String"
+    description: "EC2 Path for repository deployment"
+    default: "/home/ubuntu/gpt-api"
+  deployBranch:
+    type: "String"
+    description: "Branch to deploy"
+    default: "master"
+  runAsUser:
+    type: "String"
+    description: "User to run the deployment commands"
+    default: "ubuntu"
+  bitBucketUser:
+    type: "String"
+    description: "User to access bitbucket token link"
+    default: "gim1ga"
+  bitBucketParameterStoreTokenLink:
+    type: "String"
+    description: "Token in parameter store to access bitbucket (used by bitBucketUser)"
+    default: "/gpt-api/social-coding-gim1ga-token"
+mainSteps:
+  - action: "aws:runShellScript"
+    name: Deploy
+    inputs:
+      timeoutSeconds: '60'
+      runCommand:
+      - echo "------- Login as user {{runAsUser}}... -------"
+      - export HOME=/home/{{runAsUser}}
+      - su - {{runAsUser}} -c "git config --global --add safe.directory {{deployPath}}"
+      - set -e
+      - echo "------- Pull latest changes for {{deployBranch}}... -------"
+      - cd {{deployPath}}
+      - git reset --hard
+      - git checkout {{deployBranch}}
+      - git reset --hard
+      - git clean -fd
+      - TOKEN=$(aws ssm get-parameter --name "{{bitBucketParameterStoreTokenLink}}" --with-decryption --query "Parameter.Value" --output text --no-verify-ssl)
+      - git pull https://{{bitBucketUser}}:${TOKEN}@sourcecode.socialcoding.bosch.com/scm/ducmx/gpt-api.git
+      - echo "------- Deleting green branch... --------"
+      - if git show-ref --quiet refs/heads/green; then git branch -D green; fi
+      - echo "------- Checkout to blue branch ... --------"
+      - if git show-ref --quiet refs/heads/blue; then git checkout blue; fi
+      - echo "------- Composing down blue deploy... --------"
+      - docker compose down
+      - echo "------- Creating new green deploy... -------"
+      - git checkout {{deployBranch}}
+      - git checkout -b green
+      - docker compose up -d --build
+      - echo "------ Cleaning unused images... -------"
+      - docker image prune -a -f
+      - echo "------ Resetting permissions for .docker directory... -------"
+      - sudo chown -R {{runAsUser}}:{{runAsUser}} /home/{{runAsUser}}/.docker
+      - sudo chown -R {{runAsUser}}:{{runAsUser}} .git

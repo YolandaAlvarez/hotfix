@@ -1,0 +1,72 @@
+version: "3.9"
+services: # containers
+  python-3.11-slim: # service image name
+    container_name: GPT-API
+    build: .
+    ports: 
+      - "8000:8000" # HOST_PC_PORT:CONTAINER_PORT
+    command: gunicorn --timeout 180 -k gevent -w 4 -b 0.0.0.0:8000 main:app &
+    restart: always
+    volumes:
+      - ./logs:/app/logs
+      - ./db:/app/db
+      - .:/app
+    environment:
+      - FLASK_ENV=development
+    deploy:
+      resources:
+        reservations:
+          memory: 2G
+  
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      # - /etc/prometheus:/config
+      - ./config:/app/config
+      - prometheus-data:/prometheus
+    restart: unless-stopped
+    command: 
+      - "--config.file=/app/config/prometheus.yml"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:v1.8.0
+    container_name: node_exporter
+    command: "--path.rootfs=/host"
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - /:/host:ro,rslave
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    ports:
+      - 8080:8080
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local

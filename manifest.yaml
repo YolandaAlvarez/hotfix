@@ -1,0 +1,13 @@
+---
+schemeVersion: 2
+applications:
+  - name: "rna_e-assistant_api"
+    path: .
+    command: "gunicorn -b :$PORT main:app"
+    instances: 1
+    memory: 512M
+    disk_quota: 1G
+    routes:
+      - route: api-customer-service.hcf-bshg.com
+    buildpacks:
+      - python_buildpack

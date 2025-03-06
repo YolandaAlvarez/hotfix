@@ -1,0 +1,610 @@
+openapi: 3.0.3
+info:
+  title: GPT API
+  description: |-
+    RAG LLM API capable to conversate with context memory, it is integrated with custom company's knowledge.
+    It uses a Conversational Summary Memory technique stored in a VectorDB.
+  termsOfService: https://www.bosch-softwaretechnologies.com/en/our-company/about-us/
+  contact:
+    email: tjo1ga@bosch.com
+  license:
+    name: License BGSW-MX
+    url: https://www.bosch-softwaretechnologies.com/en/our-company/about-us/
+  version: 1.0.0
+externalDocs:
+  description: Find out more about BGSW
+  url: https://www.bosch-softwaretechnologies.com/
+servers:
+  - url: https://service-gpt-api.bosch-warehouse.com/api/v1
+  - url: http://localhost:8000/api/v1
+tags:
+  - name: conversation
+  - name: video
+
+paths:
+  /conversation/get-conversation:
+    get:
+      tags:
+        - conversation
+      summary: Return user conversation.
+      description: Return user stored conversation in a JSON format.
+      parameters:
+        - name: user
+          in: query
+          required: true
+          description: User to find.
+          schema:
+            type: string
+      operationId: get_conversation
+      responses:
+        '200':
+          description: Returns conversation in a JSON object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetConversationRequestModel'
+              example:
+                - data:
+                    additional_kwargs: {}
+                    content: "hallo wie gehts es dir"
+                    example: false
+                  type: human
+                - data:
+                    additional_kwargs: {}
+                    content: "Ich bin ein Sprachassistent und ich bin hier, um bei Fragen zu Bosch-bezogenen Themen zu helfen. Wie kann ich Ihnen helfen?"
+                    example: false
+                  type: ai
+        '400':
+          description: No conversation was found
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "No conversation was found"
+
+  /conversation/{user}/get-conversation-ids:
+    get:
+      tags:
+        - conversation
+      summary: Return user conversation id as list.
+      description: Return user's all stored conversation id in a JSON format.
+      parameters:
+        - name: user
+          in: path
+          required: true
+          description: User to find.
+          schema:
+            type: string
+      operationId: get_conversation_ids
+      responses:
+        '200':
+          description: Returns conversation in a JSON object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetConversationRequestModel'
+              example:
+                - data:
+                    additional_kwargs: {}
+                    content: "hallo wie gehts es dir"
+                    example: false
+                  type: human
+                - data:
+                    additional_kwargs: {}
+                    content: "Ich bin ein Sprachassistent und ich bin hier, um bei Fragen zu Bosch-bezogenen Themen zu helfen. Wie kann ich Ihnen helfen?"
+                    example: false
+                  type: ai
+        '400':
+          description: No conversation was found
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "No conversation was found"
+
+  /conversation/{user}/get-conversation/{conversationID}:
+    get:
+      tags:
+        - conversation
+      summary: Return user conversation for given id.
+      description: Return user conversation based on id in a JSON format.
+      parameters:
+        - name: user
+          in: path
+          required: true
+          description: User to find.
+          schema:
+            type: string
+        - name: conversationID
+          in: path
+          required: true
+          description: Conversation id.
+          schema:
+            type: string
+      operationId: get_conversation_id
+      responses:
+        '200':
+          description: Returns conversation in a JSON object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetConversationRequestModel'
+              example:
+                - data:
+                    additional_kwargs: {}
+                    content: "hallo wie gehts es dir"
+                    example: false
+                  type: human
+                - data:
+                    additional_kwargs: {}
+                    content: "Ich bin ein Sprachassistent und ich bin hier, um bei Fragen zu Bosch-bezogenen Themen zu helfen. Wie kann ich Ihnen helfen?"
+                    example: false
+                  type: ai
+        '400':
+          description: No conversation was found
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "No conversation was found"
+
+  /conversation/get-summary:
+    get:
+      tags:
+        - conversation
+      summary: Return user conversation summary.
+      description: Return user stored summary in a JSON format.
+      parameters:
+        - name: user
+          in: query
+          required: true
+          description: User to find.
+          schema:
+            type: string
+      operationId: get-summary
+      responses:
+        '201':
+          description: If existing summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetVideoRequestModel'
+              example:
+                summary: "The human sends a message to the AI. The AI responds that it does not have an exact answer to the question due to repeated fragments of information in the context provided. The AI asks if there is anything else it can help with."
+        '400':
+          description: No conversation was found
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "No summary was found."
+
+
+  /conversation/{user}/get-summary/{conversationID}:
+    get:
+      tags:
+        - conversation
+      summary: Return user conversation summary by id.
+      description: Return user's stored summary by id in a JSON format.
+      parameters:
+        - name: user
+          in: path
+          required: true
+          description: User to find.
+          schema:
+            type: string
+        - name: conversationID
+          in: path
+          required: true
+          description: Conversation id to find.
+          schema:
+            type: string
+      operationId: get-summary-id
+      responses:
+        '201':
+          description: If existing summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetVideoRequestModel'
+              example:
+                summary: "The human sends a message to the AI. The AI responds that it does not have an exact answer to the question due to repeated fragments of information in the context provided. The AI asks if there is anything else it can help with."
+        '400':
+          description: No conversation was found
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "No summary was found."
+
+  /conversation/update-conversation-classification:
+    post:
+      tags:
+        - conversation
+      summary: Return LLM text response and its classification
+      description: Send message to AI in a string "human" inside a JSON object, returns text response and its classification/source label.
+      parameters:
+        - name: user
+          in: query
+          required: true
+          description: User to find.
+          schema:
+            type: string
+        - name: applianceVIB
+          in: query
+          required: false
+          description: Appliance VIB.
+          schema:
+            type: string
+      operationId: new-update-conversation-pipeline-test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConversationRequestModel'
+            example:
+              human: "should I pre-rinse my dishes?"
+      responses:
+        '201':
+          description: Returns response if success.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  ai: "To save resources, it is not necessary to pre-rinse your dishes under running water before loading them into the dishwasher. However, it is recommended to remove large remnants of food from the dishware. This helps in efficient cleaning and prevents blockages in the dishwasher. Remember to position heavily soiled dishware, like pans, in the lower rack for a better washing result. For more information on loading patterns and efficient use of your dishwasher, you can refer to the \"Dishware\" section on page 20 of the manual."
+                  source: "BOSCH_dishwasher_oven"
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "Invalid data."
+
+  /conversation/{user}/start-conversation/{conversationID}:
+    post:
+      tags:
+        - conversation
+      summary: Return LLM text response and its classification with id
+      description: Send message to AI in a string "human" inside a JSON object, returns text response and its classification/source label.
+      parameters:
+        - name: user
+          in: path
+          required: true
+          description: User to find.
+          schema:
+            type: string
+        - name: conversationID
+          in: path
+          required: true
+          description: conversation id to find.
+          schema:
+            type: string
+        - name: applianceVIB
+          in: query
+          required: false
+          description: Appliance VIB.
+          schema:
+            type: string
+      operationId: start-conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateConversationRequestModel'
+            example:
+              human: "should I pre-rinse my dishes?"
+      responses:
+        '201':
+          description: Returns response if success.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  ai: "To save resources, it is not necessary to pre-rinse your dishes under running water before loading them into the dishwasher. However, it is recommended to remove large remnants of food from the dishware. This helps in efficient cleaning and prevents blockages in the dishwasher. Remember to position heavily soiled dishware, like pans, in the lower rack for a better washing result. For more information on loading patterns and efficient use of your dishwasher, you can refer to the \"Dishware\" section on page 20 of the manual."
+                  source: "BOSCH_dishwasher_oven"
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "Invalid data."
+
+  /conversation/update-feedback:
+    post:
+      tags:
+        - conversation
+      summary: Updates the feedback of a response for a user.
+      description: Updates the feedback of a response for a user.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequestModel'
+      responses:
+        '201':
+          description: Feedback updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  true: true
+                  message: "Feedback updated successfully."
+        '400':
+          description: Missing required parameters or invalid input.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "Missing required parameters: user, feedback"
+
+  /conversation/{user}/update-conversation-feedback/{conversationID}:
+    post:
+      tags:
+        - conversation
+      summary: Updates the feedback of a conversation id for a user.
+      description: Updates the feedback of a conversation id a user.
+      parameters:
+        - name: user
+          in: path
+          required: true
+          description: User to find.
+          schema:
+            type: string
+        - name: conversationID
+          in: path
+          required: true
+          description: conversation id to find.
+          schema:
+            type: string
+      operationId: update-conversation-feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FeedbackRequestModel'
+      responses:
+        '201':
+          description: Feedback updated successfully.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  true: true
+                  message: "Feedback updated successfully."
+        '400':
+          description: Missing required parameters or invalid input.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "Missing required parameters: user, feedback"
+
+  /conversation/delete-conversation:
+    delete:
+      tags:
+        - conversation
+      summary: Delete user stored conversation and summary
+      description: Delete user stored conversation and summary if existing.
+      operationId: delete-conversation
+      parameters:
+        - name: user
+          in: query
+          required: true
+          description: User to find.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: If existing conversation
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  success: "Conversation deleted successfully"
+        '404':
+          description: No existing conversation
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "No conversation was found."
+
+  /video/get-video:
+    post:
+      tags:
+        - video
+      summary: Return Youtube video ID related to given input.
+      description: Return Youtube video ID in a JSON format, you must send input as "human" and add user param. Currently this endpoint do not save retrieved Youtube ID into user conversation history.
+      parameters:
+        - name: user
+          in: query
+          required: true
+          description: User to find.
+          schema:
+            type: string
+      operationId: get_video
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GetVideoRequestModel'
+            example:
+              human: "should I pre-rinse my dishes?"
+      responses:
+        '201':
+          description: Returns response if success.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  videoId: "5si55pHkDIk"
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "Invalid data."
+
+  /email/send-email:
+    post:
+      tags:
+        - email
+      summary: Return results of email api
+      description: Return success or failure of email trigger event
+      parameters:
+        - name: user
+          in: query
+          required: true
+          description: User to find.
+          schema:
+            type: string
+        - name: conversationID
+          in: query
+          required: false
+          description: Conversation id to find.
+          schema:
+            type: string
+      operationId: send_email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailRequestModel'
+            example:
+              email: "khajanchandra.pandey@mx.bosch.com"
+              summary: "Test subject"
+      responses:
+        '201':
+          description: Returns response if success.
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  videoId: "Email sent successfully"
+        '400':
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: "Failed to send email."
+
+components:
+  schemas:
+    UpdateConversationRequestModel:
+      type: object
+      properties:
+        user:
+          type: string
+          description: User to find.
+        human:
+          type: string
+          description: User query for RAG.
+          example: "should I pre-rinse my dishes?"
+        applianceVIB:
+          type: string
+          description: Optional appliance VIB identifier.
+      required:
+        - user
+        - human
+
+    GetConversationRequestModel:
+      type: object
+      properties:
+        user:
+          type: string
+          description: User to find.
+      required:
+        - user
+
+    GetSummaryRequestModel:
+      type: object
+      properties:
+        user:
+          type: string
+          description: User to find.
+      required:
+        - user
+
+    GetVideoRequestModel:
+      type: object
+      properties:
+        user:
+          type: string
+          description: User to find.
+        human:
+          type: string
+          description: User query for RAG.
+          example: "should I pre-rinse my dishes?"
+      required:
+        - user
+        - human
+
+    EmailRequestModel:
+      type: object
+      properties:
+        user:
+          type: string
+          description: User to find.
+        email:
+          type: string
+          description: Email to be sent
+          example: "khajanchandra.pandey@mx.bosch.com"
+        summary:
+          type: string
+          description: Subject of email
+          example: "This is test for customer service"
+      required:
+        - user
+        - email
+        - summary
+
+    FeedbackRequestModel:
+      type: object
+      required:
+        - user
+        - responseId
+        - feedback
+      properties:
+        user:
+          type: string
+          description: User to find.
+        responseId:
+          type: string
+          description: Response ID to update.
+        feedback:
+          type: string
+          description: Feedback value.
+          enum:
+            - yes
+            - no
+            - na
+          default: na
