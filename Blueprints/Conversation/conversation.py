@@ -412,6 +412,9 @@ def start_conversation(user,conversationID) -> None:
     except Exception as e:
         return jsonify({"error": "Server error."}), 500
 
+    if "greeting" in routedResponse.lower():
+        return jsonify({"ai": f"{bot_output}", "source": "Greeting"}), 201
+
     if "dishwasher" in routedResponse.lower():
         # we need to change this
             if "please visit in bosch home appliances page" in bot_output.lower():

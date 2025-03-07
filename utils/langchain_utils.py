@@ -194,15 +194,9 @@ def handle_bot_output(*, user_input: str, routedResponse: str = None, conversati
     \n
     `Returns:` LLM response in str
     """
-    if routedResponse == "Greeting":
-        prompt = f"""You are a gentle BOSCH assistant, be friendly with user queries and always ask him how can you help him.
-        If user question is in another language, translate it into English and then answer in English, ALWAYS answer in English.
-
-        Human: {user_input}
-        AI Assistant:"""
-        response = conversationChain({'input': prompt})
-        
-        return response['response']
+    if routedResponse == "Greeting":  
+        response = conversationChain.invoke(user_input)
+        return response.content
     else:
         response = conversationChain({'question': user_input})
         # print(f"\tresponse:\n{response}")
@@ -475,39 +469,16 @@ def azure_openai_offtopic_chain():
     ## Azure OpenAI api
     llm = AzureChatOpenAI(
         azure_deployment=os.environ.get("AZURE_CHAT_DEPLOYMENT"),
-        # azure_endpoint=os.environ.get("AZURE_OPENAI_ENDPOINT"),
-        # api_key=os.getenv("AZURE_OPENAI_API_KEY"),
     )
     
-    memory = ConversationBufferMemory(
-    # memory = ConversationSummaryMemory(
-        # llm=llm, memory_key='chat_history', return_messages=True
-        llm=llm, memory_key='history', return_messages=True
-        )
+    system = """You are a gentle BOSCH assistant, be friendly with user queries and always ask him how can you help him.
+    If user question is in another language, translate it into English and then answer in English, ALWAYS answer in English."""
 
-    bosch_system_template = """You are a gentle BOSCH assistant, be friendly with user queries and always ask him how can you help him.
-    If user question is in another language, translate it into English and then answer in English, ALWAYS answer in English.
+    prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "{input}")])
 
-    Human: {question}
-    AI Assistant:"""
+    chain = prompt | llm
 
-    general_user_template = "Question:```{question}```"
-    messages = [
-                SystemMessagePromptTemplate.from_template(bosch_system_template),
-                HumanMessagePromptTemplate.from_template(general_user_template)
-    ]
-    prompt = ChatPromptTemplate.from_messages( messages )
-
-    # conversationChain = ConversationalRetrievalChain.from_llm(
-    # conversationChain = ConversationChain.from_llm(
-    conversationChain = ConversationChain(
-        llm=llm,
-        memory=memory,
-        # verbose=True,
-        # combine_docs_chain_kwargs={'prompt': prompt}
-    )
-
-    return conversationChain
+    return chain
 
 def needs_technical_knowledge_classification_chain() -> str:
     """ This function classifies `Yes` or `No` if previous LLM response needs technical knowledge. """
