@@ -8,7 +8,7 @@ from langchain_community.vectorstores import FAISS
 
 class VideoIDRetriever():
     """ Retrieve Youtube Video ID from a vector DB."""
-    def __init__(self, llm: ChatOpenAI | AzureChatOpenAI, vectorDBPath: str):
+    def __init__(self, llm: AzureChatOpenAI, vectorDBPath: str):
         """  
         Initializes VideoIDRetriever class.
 
