@@ -108,7 +108,7 @@ def get_start_conversation_chain(*, vectorStore, user,conversationID):
         llm=llm,
         retriever=vectorStore.as_retriever(),
         memory=memory,
-        # verbose=True,
+        verbose=True,
         combine_docs_chain_kwargs={'prompt': prompt}
     )
 
