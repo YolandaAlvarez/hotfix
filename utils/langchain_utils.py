@@ -199,7 +199,7 @@ def handle_bot_output(*, user_input: str, routedResponse: str = None, conversati
         return response.content
     else:
         response = conversationChain({'question': user_input})
-        # print(f"\tresponse:\n{response}")
+        print(f"\tresponse:\n{response}")
         
         # If conversationChain is LLMChain and not ConversationRetrievalChain
         if 'text' in response:
