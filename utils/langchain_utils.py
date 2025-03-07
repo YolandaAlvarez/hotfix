@@ -198,7 +198,7 @@ def handle_bot_output(*, user_input: str, routedResponse: str = None, conversati
         response = conversationChain.invoke(user_input)
         return response.content
     else:
-        response = conversationChain({'question': user_input})
+        response = conversationChain.invoke(user_input)
         print(f"\tresponse:\n{response}")
         
         # If conversationChain is LLMChain and not ConversationRetrievalChain
