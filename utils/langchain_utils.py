@@ -471,7 +471,7 @@ def azure_openai_offtopic_chain():
         azure_deployment=os.environ.get("AZURE_CHAT_DEPLOYMENT"),
     )
     
-    system = """You are a gentle BOSCH assistant, be friendly with user queries and always ask him how can you help him.
+    system = """You are a gentle BOSCH assistant, be friendly with user queries, always introduce yourself and ask him how can you help him.
     If user question is in another language, translate it into English and then answer in English, ALWAYS answer in English."""
 
     prompt = ChatPromptTemplate.from_messages([("system", system), ("human", "{input}")])
