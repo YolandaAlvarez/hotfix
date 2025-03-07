@@ -198,20 +198,23 @@ def handle_bot_output(*, user_input: str, routedResponse: str = None, conversati
         response = conversationChain.invoke(user_input)
         return response.content
     else:
-        response = conversationChain.invoke(user_input)
-        print(f"\tresponse:\n{response}")
-        
-        # If conversationChain is LLMChain and not ConversationRetrievalChain
-        if 'text' in response:
-            return response['text']
-        
-        chat_history = response['chat_history']
+        try:
+            response = conversationChain.invoke(user_input)
+            print(f"\tresponse:\n{response}")
+            
+            # If conversationChain is LLMChain and not ConversationRetrievalChain
+            if 'text' in response:
+                return response['text']
+            
+            chat_history = response['chat_history']
 
-        summary = chat_history[-1].content
-        bot_output = chat_history[-1].content
+            summary = chat_history[-1].content
+            bot_output = chat_history[-1].content
 
-        # return bot_output #, chat_history
-        return response['answer']
+            # return bot_output #, chat_history
+            return response['answer']
+        except Exception as e:
+            return str(e)
     
     
 def save_orig_chat_history(*, extracted_messages, user, source: str = None, videoId: str = None):
